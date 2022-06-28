@@ -190,10 +190,12 @@ int main(void) {
   // Free device global memory
   CUDA_CHECK_RETURN(cudaFree(d_A));
   CUDA_CHECK_RETURN(cudaFree(d_histograms));
+  CUDA_CHECK_RETURN(cudaFree(d_histogram));
 
   // Free host memory
   free(h_A);
   free(h_histograms);
+  free(h_histogram);
 
   printf("Tiempo construyendo histogramas locales: %f milisegundos\n", elapsedTime1);
   printf("Tiempo juntando histogramas en uno final: %f milisegundos\n", elapsedTime2);
