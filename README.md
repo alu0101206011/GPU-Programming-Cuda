@@ -3,6 +3,8 @@ Realizado por Anabel Díaz Labrador
 ## Introducción
 Se pide la realización de un histograma de un vector V de un número elevado N (de orden de millones) de elementos aleatorios. El histograma consiste en un vector H que tiene M elementos (siendo recomendable 8) que representan las "cajas" del histograma. En cada caja se cuenta el número de veces en la que ha aparecido un elemento concreto del vector V, para simplificar esta asignación se realiza utilizando el módulo de M, para que sea directamente incrementable en el vector H.
 
+El objetivo de esta actividad es programar utilizando recursos de la GPU para conocer de manera más cercana su arquitectura y su gran capacidad para optimizar problemas que se puedan solucionar usando computación paralela. Para ello se ha programado en CUDA que es una plataforma de computación paralela y una interfaz de programación de aplicaciones que permite que el software use ciertos tipos de unidades de procesamiento de gráficos.
+
 Se tienen varias versiones:
 - Implementación base: Se crean tantos hilos como elementos haya en el vector V y cada uno se encarga de incrementar en uno de forma atómica el vector H.
 - Implementación con reducción: Se crean tantos histogramas de tamaño M como bloques se hayan creado para el kernel de incremento. Luego usando otro kernel, mediante el algoritmo de reducción, sumamos los histogramas en uno solo.
