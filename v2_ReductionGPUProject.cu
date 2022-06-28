@@ -31,26 +31,23 @@ __global__ void incHist(const int *A, int numElements, int *histogram, int numEl
   }
 }
 
+// Device kernel
 __global__ void reduccion_paralela(int *histogram, int numElements, int *result) {
   int i = blockDim.x * blockIdx.x + threadIdx.x;
 
   if (i < numElements) {
-    int middle = numElements / 2;
-    while (middle >= M) {  // Hacemos reducción hasta que queden por juntar 8. Ultima iteración middle = 4
+    for(unsigned int middle = numElements / 2; middle >= M; middle >>= 1) { // We reduce until there are 8 left to join. Last iteration middle = 4
       if (i < middle) {
         histogram[i] = histogram[i] + histogram[i + middle];
       }
       __syncthreads();
-      middle = middle / 2;
-    } 
+    }
   } 
 
   if (i >= 0 && i < M) {
     result[i] = histogram[i];
   }
 }
-
-
 
 
 // Host main
@@ -75,7 +72,7 @@ int main(void) {
     h_A[i] = rand() % N;
   }
   printf("Vector element number: %d\n", numElementsA);
-  //show_vector(h_A, 0, 10); Comprobamos que añade números aleatorios
+  //show_vector(h_A, 0, 10); Check that adds random numbers
 
   // Allocate the device input vector A
   int *d_A = NULL;
@@ -86,7 +83,7 @@ int main(void) {
   printf("Copy input data from the host memory to the CUDA device\n");
   CUDA_CHECK_RETURN(cudaMemcpy(d_A, h_A, sizeA, cudaMemcpyHostToDevice));
 
-  // Calculamos el número de bloques necesario
+  // Calculate the number of blocks needed
   int threadsPerBlock = HILOSPORBLOQUE;
   int blocksPerGrid = (numElementsA + threadsPerBlock - 1) / threadsPerBlock;
 
@@ -130,12 +127,12 @@ int main(void) {
   float elapsedTime1;
   cudaEventElapsedTime(&elapsedTime1, start, stop);
   
-  // Recuperamos histogramas
+  // Get back the histograms
   printf("Copy local histograms from the CUDA device to the host memory\n");
   CUDA_CHECK_RETURN(cudaMemcpy(h_histograms, d_histograms, sizeHistograms, cudaMemcpyDeviceToHost));
 
-  // Checkeamos vector
-  printf("\nHistogram: ");
+  // Vector check
+  printf("\nFirst 8 elements of the vector of local histograms: ");
   show_vector(h_histograms, 0, M);
   int acc = 0;
   for (int i = 0; i < numElementsHistograms; i++) {
@@ -181,11 +178,11 @@ int main(void) {
   float elapsedTime2;
   cudaEventElapsedTime(&elapsedTime2, start, stop);
 
-  // Recuperamos histograma resultado
+  // Get back the histogram result
   printf("Copy histogram result from the CUDA device to the host memory\n");
   CUDA_CHECK_RETURN(cudaMemcpy(h_histogram, d_histogram, sizeHistogram, cudaMemcpyDeviceToHost));
 
-  // Checkeamos vector
+  // Vector check
   show_vector(h_histogram, 0, M);
   acc = 0;
   for (int i = 0; i < M; i++) {
@@ -213,10 +210,8 @@ int main(void) {
   return EXIT_SUCCESS;
 }
 
-/**
- * Check the return value of the CUDA runtime API call and exit
- * the application if the call has failed.
- */
+
+// Check the return value of the CUDA runtime API call and exit the application if the call has failed.
 static void CheckCudaErrorAux (const char *file, unsigned line, const char *statement, cudaError_t err) {
 
 	if (err == cudaSuccess)
@@ -226,6 +221,7 @@ static void CheckCudaErrorAux (const char *file, unsigned line, const char *stat
 }
 
 
+// Returns a range given the vector by the terminal
 void show_vector(int* vector, int min, int max) {
   printf("[%d", vector[min]);
   for (unsigned i = min + 1; i < max; i++) 

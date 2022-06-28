@@ -85,7 +85,7 @@ int main(void) {
     h_histogram[i] = 0;
   }
 
-  // Calculamos el número de bloques necesario
+  // Calculate the number of blocks needed
   int threadsPerBlock = HILOSPORBLOQUE;
   int blocksPerGrid = (numElementsA + threadsPerBlock - 1) / threadsPerBlock;  
 
@@ -109,11 +109,11 @@ int main(void) {
   float elapsedTime;
   cudaEventElapsedTime(&elapsedTime, start, stop);
 
-  // Recuperamos histograma resultado
+  // Get back the result histogram
   printf("Copy histogram result from the CUDA device to the host memory\n");
   CUDA_CHECK_RETURN(cudaMemcpy(h_histogram, d_histogram, sizeHistogram, cudaMemcpyDeviceToHost));
 
-  // Checkeamos vector
+  // Vector check
   printf("\nHistogram: ");
   show_vector(h_histogram, 0, M);
   int acc = 0;
@@ -138,10 +138,8 @@ int main(void) {
   return EXIT_SUCCESS;
 }
 
-/**
- * Check the return value of the CUDA runtime API call and exit
- * the application if the call has failed.
- */
+
+// Check the return value of the CUDA runtime API call and exit the application if the call has failed.
 static void CheckCudaErrorAux (const char *file, unsigned line, const char *statement, cudaError_t err) {
 
 	if (err == cudaSuccess)
@@ -151,6 +149,7 @@ static void CheckCudaErrorAux (const char *file, unsigned line, const char *stat
 }
 
 
+// Returns a range given the vector by the terminal
 void show_vector(int* vector, int min, int max) {
   printf("[%d", vector[min]);
   for (unsigned i = min + 1; i < max; i++) 
