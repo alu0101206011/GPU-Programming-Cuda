@@ -5,14 +5,26 @@ Se pide la realización de un histograma de un vector V de un número elevado N 
 
 El objetivo de esta actividad es programar utilizando recursos de la GPU para conocer de manera más cercana su arquitectura y su gran capacidad para optimizar problemas que se puedan solucionar usando computación paralela. Para ello se ha programado en CUDA que es una plataforma de computación paralela y una interfaz de programación de aplicaciones que permite que el software use ciertos tipos de unidades de procesamiento de gráficos.
 
-Se tienen varias versiones:
+Para medir el tiempo se han usado los cudaEvent, como se muestra en el siguiente ejemplo:
+```cuda
+  cudaEvent_t start, stop;
+  cudaEventCreate(&start);
+  cudaEventCreate(&stop);
+
+  cudaEventRecord(start, 0);
+  incHist<<<blocksPerGrid, threadsPerBlock>>>(d_A, sizeA, d_histogram, numElementsHistogram);
+  cudaEventRecord(stop, 0);
+  cudaEventSynchronize(stop);
+``` 
+
+Se tienen varias implementaciones:
 - Implementación base: Se crean tantos hilos como elementos haya en el vector V y cada uno se encarga de incrementar en uno de forma atómica el vector H.
 - Implementación con reducción: Se crean tantos histogramas de tamaño M como bloques se hayan creado para el kernel de incremento con un número arbitrario de hilos. Luego usando otro kernel, mediante el algoritmo de reducción, sumamos los histogramas en uno solo.
 - Implementación con reducción con menor uso de operaciones atómicas: Es igual que el anterior pero se crean tantos histogramas de tamaño M con un número de hilos menor al utilizado en el anterior.
 
 
 ## Comparativa de tiempos
-El támaño del vector para todas las pruebas ha sido $1048576 = 2^{20}$
+El tamaño del vector para todas las pruebas ha sido $1048576 = 2^{20}$.
 
 
 | Versión del código         | Nº Hilos | Nº Bloques | Tiempo obtenido kernel 1 | Tiempo obtenido kernel 2 | Tiempo total   |
@@ -23,7 +35,7 @@ El támaño del vector para todas las pruebas ha sido $1048576 = 2^{20}$
 
 
 ## Implementación base
-El objetivo de esta implementación es cumplir con el objetivo de la manera más intuitiva y simple posible para tener un punto de referencia para comparar con las versiones posteriores.
+El objetivo de esta implementación es tener una manera intuitiva y simple para tener un punto de referencia para poder comparar con las versiones posteriores.
 
 Se han tenido que crear variables alojadas en el host (CPU) y otras alojadas en el device (GPU) que se inicializarán en el host, se copiarán en el device, luego se modificarán esos datos usando paralelismo (y así comprobar la mejoría del rendimiento con respecto a otros códigos con hilos que hemos realizado en el pasado), estos datos se copiarán de vuelta del device al host y se comprobará el tiempo que ha tomado.
 
@@ -31,11 +43,22 @@ Se ha realizado un kernel (código ejecutado en la GPU) cuya función es, tenien
 
 Disminuir o aumentar el número de hilos en este caso no hace cambios significativos.
 
+```cuda
+__global__ void incHist(const int *A, int numElementsA, int *histogram, int numElementsHistogram) {
+  int i = blockDim.x * blockIdx.x + threadIdx.x;
+  
+  if (i < numElementsA) {
+    int increment = A[i] % M;
+    atomicAdd(&histogram[increment], 1);
+  }
+}
+```
+
 ## Implemetación con reducción
 El objetivo de esta implementación es reducir el número de operaciones atómicas en la misma posición de memoria.
 
 Para conseguirlo se ha dividido la operación en dos fases:
-- La creación de multiples histogramas
+- La creación de multiples histogramas.
 - La unión de los histogramas en uno solo.
 
 He hecho que el tamaño total del vector de histogramas locales sea el número de bloques creado por grid multiplicado por M porque es una manera óptima de paralelizar la cantidad de hilos que se usan en el vector V (cada hilo va a un elemento diferente del vector) y al mismo tiempo tener un número razonable de sumas atómicas.
@@ -44,6 +67,53 @@ En esta implementación es importante que el tamaño del vector V sea una potenc
 
 Se ha utilizado este algoritmo porque es una forma de paralelizar totalmente la unión de histogramas, con la desventaja de que hay que ir sincronizando los hilos en cada iteración del algoritmo y que necesitamos, como se dijo antes, que el tamaño del vector al que se le va a hacer reducción sea potencia de 2.
 
+La primera parte:
+```cuda
+__global__ void incHist(const int *A, int numElements, int *histogram, int numElementsHistograms) {
+  int i = blockDim.x * blockIdx.x + threadIdx.x;
+  
+  if (i < numElements) {
+    int increment = A[i] % M;
+    atomicAdd(&histogram[M * blockIdx.x + increment], 1);
+  }
+}
+```
+
+La segunda parte:
+```cuda
+__global__ void reduccion_paralela(int *histogram, int numElements, int *result) {
+  int i = blockDim.x * blockIdx.x + threadIdx.x;
+
+  if (i < numElements) {
+    for(unsigned int middle = numElements / 2; middle >= M; middle >>= 1) { // We reduce until there are 8 left to join. Last iteration middle = 4
+      if (i < middle) {
+        histogram[i] = histogram[i] + histogram[i + middle];
+      }
+      __syncthreads();
+    }
+  } 
+
+  if (i >= 0 && i < M) {
+    result[i] = histogram[i];
+  }
+}
+```
+
+Es relevante destacar como se ha asignado la memoria del vector de histogramas locales en el main:
+```cuda
+  // Vector length to be used, and compute its size
+  int numElementsHistograms = blocksPerGrid * M;
+  size_t sizeHistograms = numElementsHistograms * sizeof(int);
+
+  // Allocate the host input vector histogram
+  int *h_histograms = (int*)malloc(sizeHistograms);
+  
+  // ... Checks ...
+  
+  int *d_histograms = NULL;
+  CUDA_CHECK_RETURN(cudaMalloc((void**)&d_histograms, sizeHistograms));
+```
+
 
 ## Implementación de Unified Memory
 El objetivo de esta implementación es hacer que el código sea aún más amigable que la versión base. En este caso no es necesario reservar memoria para la CPU y luego reservar otra vez para la GPU sino que lo que tenemos es un único espacio de direcciones de memoria accesible desde la CPU o GPU. Asignar memoria unificada es tan simple como reemplazar las llamadas a malloc() con llamadas a cudaMallocManaged().
@@ -51,6 +121,11 @@ El objetivo de esta implementación es hacer que el código sea aún más amigab
 Este cambio no pretende mejorar el rendimiento, ya que esta memoria unificada es inequivocamente más lenta que hasta incluso la de la versión base.
 
 Es una muy buena implementación para personas que se están empezando a familiarizar con la programación con CUDA y puede ser útil para depurar el código al poder acceder en todo momento los datos sin tener que volver a copiarlos de la GPU a la CPU.
+
+```cuda
+CUDA_CHECK_RETURN(cudaMallocManaged(&histograms, sizeHistograms));
+CUDA_CHECK_RETURN(cudaFree(histograms));
+``` 
 
 
 
