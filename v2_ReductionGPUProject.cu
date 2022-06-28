@@ -22,7 +22,7 @@ void show_vector(int*, int, int);
 
 
 // Device kernel
-__global__ void incHist(const int *A, int numElements, int *histogram, int numElementsHistogram) {
+__global__ void incHist(const int *A, int numElements, int *histogram, int numElementsHistograms) {
   int i = blockDim.x * blockIdx.x + threadIdx.x;
   
   if (i < numElements) {
@@ -91,29 +91,29 @@ int main(void) {
   int blocksPerGrid = (numElementsA + threadsPerBlock - 1) / threadsPerBlock;
 
   // Vector length to be used, and compute its size
-  int numElementsHistogram = blocksPerGrid * M;
-  size_t sizeHistogram = numElementsHistogram * sizeof(int);
+  int numElementsHistograms = blocksPerGrid * M;
+  size_t sizeHistograms = numElementsHistograms * sizeof(int);
 
   // Allocate the host input vector histogram
-  int *h_histograms = (int*)malloc(sizeHistogram);
+  int *h_histograms = (int*)malloc(sizeHistograms);
   if (h_histograms == NULL) {
       fprintf(stderr, "Failed to allocate host vectors!\n");
       exit(EXIT_FAILURE);
   }
 
   // Initialize the host input vector
-  for (int i = 0; i < numElementsHistogram; i++) {
+  for (int i = 0; i < numElementsHistograms; i++) {
     h_histograms[i] = 0;
   }
 
   // Allocate the device input vector histogram
   int *d_histograms = NULL;
-  CUDA_CHECK_RETURN(cudaMalloc((void**)&d_histograms, sizeHistogram));
+  CUDA_CHECK_RETURN(cudaMalloc((void**)&d_histograms, sizeHistograms));
 
   // Copy the host input vector histograms in host memory to the device input vector in
   // device memory
   printf("Copy input data from the host memory to the CUDA device\n");
-  CUDA_CHECK_RETURN(cudaMemcpy(d_histograms, h_histograms, sizeHistogram, cudaMemcpyHostToDevice));
+  CUDA_CHECK_RETURN(cudaMemcpy(d_histograms, h_histograms, sizeHistograms, cudaMemcpyHostToDevice));
 
   // Launch the incHist CUDA Kernel
   printf("CUDA kernel launch with %d blocks of %d threads\n", blocksPerGrid, threadsPerBlock);
@@ -122,7 +122,7 @@ int main(void) {
   cudaEventCreate(&stop);
 
   cudaEventRecord(start, 0);
-  incHist<<<blocksPerGrid, threadsPerBlock>>>(d_A, numElementsA, d_histograms, numElementsHistogram);
+  incHist<<<blocksPerGrid, threadsPerBlock>>>(d_A, numElementsA, d_histograms, numElementsHistograms);
   cudaEventRecord(stop, 0);
   cudaEventSynchronize(stop);
   CUDA_CHECK_RETURN(cudaGetLastError());
@@ -132,18 +132,24 @@ int main(void) {
   
   // Recuperamos histogramas
   printf("Copy local histograms from the CUDA device to the host memory\n");
-  CUDA_CHECK_RETURN(cudaMemcpy(h_histograms, d_histograms, sizeHistogram, cudaMemcpyDeviceToHost));
+  CUDA_CHECK_RETURN(cudaMemcpy(h_histograms, d_histograms, sizeHistograms, cudaMemcpyDeviceToHost));
 
   // Checkeamos vector
+  printf("\nHistogram: ");
   show_vector(h_histograms, 0, M);
   int acc = 0;
-  for (int i = 0; i < numElementsHistogram; i++) {
+  for (int i = 0; i < numElementsHistograms; i++) {
     acc += h_histograms[i];
   }
-  printf("Histogram total increments: %d\nHistogram size: %d\n", acc, numElementsHistogram);
+  printf("Histogram total increments: %d\nHistogram size: %d\n", acc, numElementsHistograms);
+
+  // Vector length to be used, and compute its size
+  int numElementsHistogram = M;
+  size_t sizeHistogram = numElementsHistogram * sizeof(int);
+
 
   // Allocate the host input vector histograma
-  int *h_histogram = (int*)malloc((size_t)(M * sizeof(int)));
+  int *h_histogram = (int*)malloc(sizeHistogram);
   if (h_histogram == NULL) {
       fprintf(stderr, "Failed to allocate host vectors!\n");
       exit(EXIT_FAILURE);
@@ -151,7 +157,7 @@ int main(void) {
 
   // Allocate the device input vector histogram
   int *d_histogram = NULL;
-  CUDA_CHECK_RETURN(cudaMalloc((void**)&d_histogram, (size_t)(M * sizeof(int))));
+  CUDA_CHECK_RETURN(cudaMalloc((void**)&d_histogram, sizeHistogram));
 
   // Initialize the host input vector
   for (int i = 0; i < M; i++) {
@@ -161,13 +167,13 @@ int main(void) {
   // Copy the host input vector histogram in host memory to the device input vector in
   // device memory
   printf("Copy input data from the host memory to the CUDA device\n");
-  CUDA_CHECK_RETURN(cudaMemcpy(d_histogram, h_histogram,  (size_t)(M * sizeof(int)), cudaMemcpyHostToDevice));
+  CUDA_CHECK_RETURN(cudaMemcpy(d_histogram, h_histogram,  sizeHistogram, cudaMemcpyHostToDevice));
 
   // Launch the reduccion_paralela CUDA Kernel
-  blocksPerGrid = (numElementsHistogram + threadsPerBlock - 1) / threadsPerBlock;
+  blocksPerGrid = (numElementsHistograms + threadsPerBlock - 1) / threadsPerBlock;
   printf("CUDA kernel launch with %d blocks of %d threads\n", blocksPerGrid, threadsPerBlock);
   cudaEventRecord(start, 0);
-  reduccion_paralela<<<blocksPerGrid, threadsPerBlock>>>(d_histograms, numElementsHistogram, d_histogram);
+  reduccion_paralela<<<blocksPerGrid, threadsPerBlock>>>(d_histograms, numElementsHistograms, d_histogram);
   cudaEventRecord(stop, 0);
   cudaEventSynchronize(stop);
   CUDA_CHECK_RETURN(cudaGetLastError());
@@ -177,7 +183,7 @@ int main(void) {
 
   // Recuperamos histograma resultado
   printf("Copy histogram result from the CUDA device to the host memory\n");
-  CUDA_CHECK_RETURN(cudaMemcpy(h_histogram, d_histogram, (size_t)(M * sizeof(int)), cudaMemcpyDeviceToHost));
+  CUDA_CHECK_RETURN(cudaMemcpy(h_histogram, d_histogram, sizeHistogram, cudaMemcpyDeviceToHost));
 
   // Checkeamos vector
   show_vector(h_histogram, 0, M);
@@ -197,7 +203,7 @@ int main(void) {
   free(h_histograms);
   free(h_histogram);
 
-  printf("Tiempo construyendo histogramas locales: %f milisegundos\n", elapsedTime1);
+  printf("\nTiempo construyendo histogramas locales: %f milisegundos\n", elapsedTime1);
   printf("Tiempo juntando histogramas en uno final: %f milisegundos\n", elapsedTime2);
   printf("Tiempo total: %f milisegundos\n", elapsedTime1 + elapsedTime2);
   cudaEventDestroy(start);
