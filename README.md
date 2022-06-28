@@ -15,17 +15,19 @@ Se tienen varias versiones:
 El támaño del vector para todas las pruebas ha sido $1048576 = 2^{20}$
 
 
-| Versión del código    | Nº Hilos | Nº Bloques | Tiempo obtenido kernel 1 | Tiempo obtenido kernel 2 | Tiempo total   |
-| :-------------------: | :------: | :--------: | :----------------------: | :----------------------: | :------------: |
-| **Versión base**      | $128$    | $8192$     | $0,2659337143$           | -                        | $0,2659337143$ |
-| **Versión reducción** | $512$    | $2048$     | $0,036224$               | $0,007176$               | $0,04276$      |
-| **Versión reducción** | $128$    | $8192$     | $0,023648$               | $0,0083456$              | $0,0319936$    |
+| Versión del código         | Nº Hilos | Nº Bloques | Tiempo obtenido kernel 1 | Tiempo obtenido kernel 2 | Tiempo total   |
+| :------------------------: | :------: | :--------: | :----------------------: | :----------------------: | :------------: |
+| **Versión base**           | $512$    | $2048$     | $0,265934$               | -                        | $0,26594$      |
+| **Versión reducción**      | $512$    | $2048$     | $0,036224$               | $0,007176$               | $0,04276$      |
+| **Versión Unified Memory** | $512$    | $2048$     | $1,903072$               | $0,205568$               | $2,10864$      |
 
 
 ## Implementación base
 El objetivo de esta implementación es cumplir con el objetivo de la manera más intuitiva y simple posible para tener un punto de referencia para comparar con las versiones posteriores.
 
-Para realizarlo se ha implementado en un kernel cuya función es, teniendo un número de hilos y bloques que permita leer el vector V con un hilo por cada elemento, incrementar la "caja" correspondiente de un histograma concreto de tamaño M.
+Se han tenido que crear variables alojadas en el host (CPU) y otras alojadas en el device (GPU) que se inicializarán en el host, se copiarán en el device, luego se modificarán esos datos usando paralelismo (y así comprobar la mejoría del rendimiento con respecto a otros códigos con hilos que hemos realizado en el pasado), estos datos se copiarán de vuelta del device al host y se comprobará el tiempo que ha tomado.
+
+Se ha realizado un kernel (código ejecutado en la GPU) cuya función es, teniendo un número de hilos y de bloques dado, permitir leer el vector V con un hilo por cada elemento de este e incrementar la "caja" correspondiente de un histograma único de tamaño M.
 
 Disminuir o aumentar el número de hilos en este caso no hace cambios significativos.
 
@@ -38,16 +40,20 @@ Para conseguirlo se ha dividido la operación en dos fases:
 
 He hecho que el tamaño total del vector de histogramas locales sea el número de bloques creado por grid multiplicado por M porque es una manera óptima de paralelizar la cantidad de hilos que se usan en el vector V (cada hilo va a un elemento diferente del vector) y al mismo tiempo tener un número razonable de sumas atómicas.
 
-En esta implementación es importante que el tamaño del vector V sea una potencia de 2 además del número de bloques y el número de hilos para el correcto funcionamiento del algoritmo de reducción.
+En esta implementación es importante que el tamaño del vector V sea una potencia de 2 además del número de bloques y el número de hilos para el correcto funcionamiento del algoritmo de reducción, ya que de ello depende el tamaño del vector de histogramas locales y este es el que se va a reducir.
 
-Se ha utilizado este algoritmo porque es una forma de paralelizar totalmente la unión de histogramas, con la desventaja de que hay que ir sincronizando los hilos en cada iteración del algoritmo.
+Se ha utilizado este algoritmo porque es una forma de paralelizar totalmente la unión de histogramas, con la desventaja de que hay que ir sincronizando los hilos en cada iteración del algoritmo y que necesitamos, como se dijo antes, que el tamaño del vector al que se le va a hacer reducción sea potencia de 2.
 
 
-## Implementación por reducción sin operaciones atómicas
-El objetivo es mejorar la anterior implementación eliminando todas y cada una de las operaciones atómicas aprovechando que el tiempo en el algoritmo de reducción es 4,86 veces menor al tiempo que se utiliza en las operaciones atómicas en el kernel de incrementación de los histogramas locales.
+## Implementación de Unified Memory
+El objetivo de esta implementación es hacer que el código sea aún más amigable que la versión base. En este caso no es necesario reservar memoria para la CPU y luego reservar otra vez para la GPU sino que lo que tenemos es un único espacio de direcciones de memoria accesible desde la CPU o GPU. Asignar memoria unificada es tan simple como reemplazar las llamadas a malloc() con llamadas a cudaMallocManaged().
 
-Lo que se realizará es disminuir el número de hilos por bloque y aumentar el número de bloques, haciendo que cada vez hayan menos sumas atómicas pero un mayor número de bloques.
+Este cambio no pretende mejorar el rendimiento, ya que esta memoria unificada es inequivocamente más lenta que hasta incluso la de la versión base.
 
-Esto fue fácilmente aplicado gracias que dispongo de un código parametrizado, por lo que lo único que cambié fue el número de hilos por bloque que dispongo en un define.
+Es una muy buena implementación para personas que se están empezando a familiarizar con la programación con CUDA y puede ser útil para depurar el código al poder acceder en todo momento los datos sin tener que volver a copiarlos de la GPU a la CPU.
+
+
+
+
 
 
